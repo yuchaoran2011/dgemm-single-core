@@ -1,4 +1,4 @@
-//#include <x86intrin.h>
+#include <emmintrin.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
 
@@ -13,6 +13,7 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
+ /*
 static void do_block (int lda, int M, int N, int K, const double* A, const double* B, double* restrict C) {
     int M_div_8 = (M>>3) << 3;
 
@@ -67,13 +68,14 @@ static void do_block (int lda, int M, int N, int K, const double* A, const doubl
         }
     }
 }
+*/
 
 
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
 
- /* With Intel Intrinsics, does not work yet.
+ /* With Intel Intrinsics, does not work yet.*/
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C) {
     int M_div_8 = (M>>3) << 3;
 
@@ -86,15 +88,15 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
             __m128d bkjv = _mm_load1_pd(B+k+jlda);
 
             for (int i = 0; i < M_div_8; i+=8) {
-                __m128d a1 = _mm_load_pd(A+i+klda);
-                __m128d a2 = _mm_load_pd(A+i+klda+2);
-                __m128d a3 = _mm_load_pd(A+i+klda+4);
-                __m128d a4 = _mm_load_pd(A+i+klda+6);
+                __m128d a1 = _mm_loadu_pd(A+i+klda);
+                __m128d a2 = _mm_loadu_pd(A+i+klda+2);
+                __m128d a3 = _mm_loadu_pd(A+i+klda+4);
+                __m128d a4 = _mm_loadu_pd(A+i+klda+6);
 
-                __m128d c1 = _mm_load_pd(C+i+jlda);
-                __m128d c2 = _mm_load_pd(C+i+jlda+2);
-                __m128d c3 = _mm_load_pd(C+i+jlda+4);
-                __m128d c4 = _mm_load_pd(C+i+jlda+6);
+                __m128d c1 = _mm_loadu_pd(C+i+jlda);
+                __m128d c2 = _mm_loadu_pd(C+i+jlda+2);
+                __m128d c3 = _mm_loadu_pd(C+i+jlda+4);
+                __m128d c4 = _mm_loadu_pd(C+i+jlda+6);
 
                 __m128d p1 = _mm_mul_pd(a1, bkjv);
                 __m128d p2 = _mm_mul_pd(a2, bkjv);
@@ -106,10 +108,10 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
                 c3 = _mm_add_pd(p3, c3);
                 c4 = _mm_add_pd(p4, c4);
 
-                _mm_store_pd(C+i+jlda, c1);
-                _mm_store_pd(C+i+jlda+2, c2);
-                _mm_store_pd(C+i+jlda+4, c3);
-                _mm_store_pd(C+i+jlda+6, c4);
+                _mm_storeu_pd(C+i+jlda, c1);
+                _mm_storeu_pd(C+i+jlda+2, c2);
+                _mm_storeu_pd(C+i+jlda+4, c3);
+                _mm_storeu_pd(C+i+jlda+6, c4);
             }
 
             for (int i=M_div_8; i<M; ++i) {
@@ -117,13 +119,14 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
             }
         }
     }
-}*/
+}
+
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, const double* A, const double* B, double* restrict C) {
+void square_dgemm (int lda, double* A, double* B, double* restrict C) {
     /* For each block-row of A */ 
     for (int j = 0; j < lda; j += BLOCK_SIZE) {
     /* For each block-column of B */
