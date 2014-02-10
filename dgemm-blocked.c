@@ -6,63 +6,57 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
+/* This auxiliary subroutine performs a smaller dgemm operation
+ *  C := C + A * B
+ * where C is M-by-N, A is M-by-K, and B is K-by-N. */
+static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C) {
+    int M_div_8 = (M>>3) << 3;
 
-static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
-{
-    int K_div_8 = (K>>3) << 3;
+    for (int j = 0; j < N; ++j) {
+        for (int k = 0; k < K; ++k) {  
 
-    /* For each row i of A */
-    for (int i = 0; i < M; ++i) {
-    /* For each column j of B */ 
-        int jlda = 0;
-        for (int j = 0; j < N; ++j) {
-        /* Compute C(i,j) */
-            double cij = C[i+j*lda];
+            double bkj = B[k+j*lda];
+            int klda = k*lda;
+            int jlda = j*lda;
 
-            for (int k = 0; k < K_div_8; k+=8) {
-                double cij1 = A[i+k*lda] * B[k+jlda];
-                double cij2 = A[i+(k+1)*lda] * B[k+jlda+1];
-                double cij3 = A[i+(k+2)*lda] * B[k+jlda+2];
-                double cij4 = A[i+(k+3)*lda] * B[k+jlda+3];
+            for (int i = 0; i < M_div_8; i+=8) {
+                C[i+jlda] += A[i+klda] * bkj; 
+                C[1+i+jlda] += A[i+klda+1] * bkj;
+                C[2+i+jlda] += A[i+klda+2] * bkj;
+                C[3+i+jlda] += A[i+klda+3] * bkj;
 
-                double cij5 = A[i+(k+4)*lda] * B[k+jlda+4];
-                double cij6 = A[i+(k+5)*lda] * B[k+jlda+5];
-                double cij7 = A[i+(k+6)*lda] * B[k+jlda+6];
-                double cij8 = A[i+(k+7)*lda] * B[k+jlda+7];
-
-                cij += cij1 + cij2 + cij3 + cij4 + cij5 + cij6 + cij7 + cij8;
-                C[i+j*lda] = cij;
+                C[4+i+jlda] += A[i+klda+4] * bkj;
+                C[5+i+jlda] += A[i+klda+5] * bkj;
+                C[6+i+jlda] += A[i+klda+6] * bkj;
+                C[7+i+jlda] += A[i+klda+7] * bkj;
             }
 
-            for (int k = K_div_8; k < K; ++k) {
-                cij += A[i+k*lda] * B[k+jlda];
-                C[i+jlda] = cij;
+            for (int i=M_div_8; i<M; ++i) {
+                C[i+j*lda] += A[i+klda] * bkj;
             }
-            jlda += lda;
         }
     }
 }
-
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, double* A, double* B, double* C)
-{
-  /* For each block-row of A */ 
-  for (int i = 0; i < lda; i += BLOCK_SIZE)
+void square_dgemm (int lda, double* A, double* B, double* C) {
+    /* For each block-row of A */ 
+    for (int i = 0; i < lda; i += BLOCK_SIZE) {
     /* For each block-column of B */
-    for (int j = 0; j < lda; j += BLOCK_SIZE)
-      /* Accumulate block dgemms into block of C */
-      for (int k = 0; k < lda; k += BLOCK_SIZE)
-      {
-	/* Correct block dimensions if block "goes off edge of" the matrix */
-	int M = min (BLOCK_SIZE, lda-i);
-	int N = min (BLOCK_SIZE, lda-j);
-	int K = min (BLOCK_SIZE, lda-k);
+        for (int j = 0; j < lda; j += BLOCK_SIZE) {
+        /* Accumulate block dgemms into block of C */
+            for (int k = 0; k < lda; k += BLOCK_SIZE)   {
+	       /* Correct block dimensions if block "goes off edge of" the matrix */
+	           int M = min (BLOCK_SIZE, lda-i);
+	           int N = min (BLOCK_SIZE, lda-j);
+	           int K = min (BLOCK_SIZE, lda-k);
 
-	/* Perform individual block dgemm */
-	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
-      }
+	           /* Perform individual block dgemm */
+	           do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+            }
+        }
+    }
 }
