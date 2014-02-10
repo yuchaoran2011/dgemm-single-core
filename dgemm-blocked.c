@@ -13,7 +13,7 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-static void do_block (int lda, int M, int N, int K, double* restrict A, double* restrict B, double* restrict C) {
+static void do_block (int lda, int M, int N, int K, const double* A, const double* B, double* restrict C) {
     int M_div_8 = (M>>3) << 3;
 
     for (int j = 0; j < N; ++j) {
@@ -24,15 +24,41 @@ static void do_block (int lda, int M, int N, int K, double* restrict A, double* 
             int jlda = j*lda;
 
             for (int i = 0; i < M_div_8; i+=8) {
-                C[i+jlda] += A[i+klda] * bkj; 
-                C[1+i+jlda] += A[i+klda+1] * bkj;
-                C[2+i+jlda] += A[i+klda+2] * bkj;
-                C[3+i+jlda] += A[i+klda+3] * bkj;
+                int idx1 = i+jlda;
+                int idx2 = 1+i+jlda;
+                int idx3 = 2+i+jlda;
+                int idx4 = 3+i+jlda;
+                int idx5 = 4+i+jlda;
+                int idx6 = 5+i+jlda;
+                int idx7 = 6+i+jlda;
+                int idx8 = 7+i+jlda;
 
-                C[4+i+jlda] += A[i+klda+4] * bkj;
-                C[5+i+jlda] += A[i+klda+5] * bkj;
-                C[6+i+jlda] += A[i+klda+6] * bkj;
-                C[7+i+jlda] += A[i+klda+7] * bkj;
+                double cij1 = C[idx1];
+                double cij2 = C[idx2];
+                double cij3 = C[idx3];
+                double cij4 = C[idx4];
+                double cij5 = C[idx5];
+                double cij6 = C[idx6];
+                double cij7 = C[idx7];
+                double cij8 = C[idx8];
+
+                cij1 += A[i+klda] * bkj; 
+                cij2 += A[i+klda+1] * bkj;
+                cij3 += A[i+klda+2] * bkj;
+                cij4 += A[i+klda+3] * bkj;
+                cij5 += A[i+klda+4] * bkj; 
+                cij6 += A[i+klda+5] * bkj;
+                cij7 += A[i+klda+6] * bkj;
+                cij8 += A[i+klda+7] * bkj;
+
+                C[idx1] = cij1;
+                C[idx2] = cij2;
+                C[idx3] = cij3;
+                C[idx4] = cij4;
+                C[idx5] = cij5;
+                C[idx6] = cij6;
+                C[idx7] = cij7;
+                C[idx8] = cij8;
             }
 
             for (int i=M_div_8; i<M; ++i) {
@@ -97,7 +123,7 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, double* restrict A, double* restrict B, double* restrict C) {
+void square_dgemm (int lda, const double* A, const double* B, double* restrict C) {
     /* For each block-row of A */ 
     for (int j = 0; j < lda; j += BLOCK_SIZE) {
     /* For each block-column of B */
