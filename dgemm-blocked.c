@@ -1,145 +1,129 @@
 #include <emmintrin.h>
 
-const char* dgemm_desc = "Simple blocked dgemm.";
+const char* dgemm_desc = "Blocked dgemm with SSE";
+#define RSIZE_M 2
+#define RSIZE_K 2
+#define RSIZE_N 2
+#define I_STRIDE 2
 
-#if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 32
-#endif
-
+#define turn_even(M) (((M)%2)?((M)+1):(M))
 #define min(a,b) (((a)<(b))?(a):(b))
 
+static void do_block(int M, int K, int N, double* A, double* B, double* C) {
 
+    __m128d c0, c1, a0, a1, b0, b1, b2, b3, d0, d1;    
 
-/* This auxiliary subroutine performs a smaller dgemm operation
- *  C := C + A * B
- * where C is M-by-N, A is M-by-K, and B is K-by-N. */
- /*
-static void do_block (int lda, int M, int N, int K, const double* A, const double* B, double* restrict C) {
-    int M_div_8 = (M>>3) << 3;
+    for (int k=0; k<K; k+=RSIZE_K) {
+        for (int j=0; j<N; j+=RSIZE_N) {
 
-    for (int j = 0; j < N; ++j) {
-        for (int k = 0; k < K; ++k) {  
+            b0 = _mm_load1_pd(B+k+j*K);
+            b1 = _mm_load1_pd(B+k+1+j*K);
+            b2 = _mm_load1_pd(B+k+(j+1)*K);
+            b3 = _mm_load1_pd(B+k+1+(j+1)*K);
 
-            double bkj = B[k+j*lda];
-            int klda = k*lda;
-            int jlda = j*lda;
+            for (int i=0; i<M; i+=RSIZE_M) {
+                a0 = _mm_load_pd(A+i+k*M);
+                a1 = _mm_load_pd(A+i+(k+1)*M);
 
-            for (int i = 0; i < M_div_8; i+=8) {
-                int idx1 = i+jlda;
-                int idx2 = 1+i+jlda;
-                int idx3 = 2+i+jlda;
-                int idx4 = 3+i+jlda;
-                int idx5 = 4+i+jlda;
-                int idx6 = 5+i+jlda;
-                int idx7 = 6+i+jlda;
-                int idx8 = 7+i+jlda;
+                c0 = _mm_load_pd(C+i+j*M);
+                c1 = _mm_load_pd(C+i+(j+1)*M);
 
-                double cij1 = C[idx1];
-                double cij2 = C[idx2];
-                double cij3 = C[idx3];
-                double cij4 = C[idx4];
-                double cij5 = C[idx5];
-                double cij6 = C[idx6];
-                double cij7 = C[idx7];
-                double cij8 = C[idx8];
+                d0 = _mm_add_pd(c0, _mm_mul_pd(a0,b0));
+                d1 = _mm_add_pd(c1, _mm_mul_pd(a0,b2));
+                c0 = _mm_add_pd(d0, _mm_mul_pd(a1,b1));
+                c1 = _mm_add_pd(d1, _mm_mul_pd(a1,b3));
 
-                cij1 += A[i+klda] * bkj; 
-                cij2 += A[i+klda+1] * bkj;
-                cij3 += A[i+klda+2] * bkj;
-                cij4 += A[i+klda+3] * bkj;
-                cij5 += A[i+klda+4] * bkj; 
-                cij6 += A[i+klda+5] * bkj;
-                cij7 += A[i+klda+6] * bkj;
-                cij8 += A[i+klda+7] * bkj;
-
-                C[idx1] = cij1;
-                C[idx2] = cij2;
-                C[idx3] = cij3;
-                C[idx4] = cij4;
-                C[idx5] = cij5;
-                C[idx6] = cij6;
-                C[idx7] = cij7;
-                C[idx8] = cij8;
-            }
-
-            for (int i=M_div_8; i<M; ++i) {
-                C[i+j*lda] += A[i+klda] * bkj;
+                _mm_store_pd(C+i+j*M,c0);
+                _mm_store_pd(C+i+(j+1)*M,c1); 
             }
         }
     }
 }
-*/
 
 
-/* This auxiliary subroutine performs a smaller dgemm operation
- *  C := C + A * B
- * where C is M-by-N, A is M-by-K, and B is K-by-N. */
 
- /* With Intel Intrinsics, does not work yet.*/
-static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C) {
-    int M_div_8 = (M>>3) << 3;
+static double* copy_block(int lda, int M, int N, double* A, double* new_A) {
 
-    for (int j = 0; j < N; ++j) {
-        for (int k = 0; k < K; ++k) {  
+    int M_even = turn_even(M);
+    int N_even = turn_even(N);
+    int i_step;
+    __m128d a;
 
-            double bkj = B[k+j*lda];
-            int klda = k*lda;
-            int jlda = j*lda;
-            __m128d bkjv = _mm_load1_pd(B+k+jlda);
-
-            for (int i = 0; i < M_div_8; i+=8) {
-                __m128d a1 = _mm_loadu_pd(A+i+klda);
-                __m128d a2 = _mm_loadu_pd(A+i+klda+2);
-                __m128d a3 = _mm_loadu_pd(A+i+klda+4);
-                __m128d a4 = _mm_loadu_pd(A+i+klda+6);
-
-                __m128d c1 = _mm_loadu_pd(C+i+jlda);
-                __m128d c2 = _mm_loadu_pd(C+i+jlda+2);
-                __m128d c3 = _mm_loadu_pd(C+i+jlda+4);
-                __m128d c4 = _mm_loadu_pd(C+i+jlda+6);
-
-                __m128d p1 = _mm_mul_pd(a1, bkjv);
-                __m128d p2 = _mm_mul_pd(a2, bkjv);
-                __m128d p3 = _mm_mul_pd(a3, bkjv);
-                __m128d p4 = _mm_mul_pd(a4, bkjv);
-
-                c1 = _mm_add_pd(p1, c1);
-                c2 = _mm_add_pd(p2, c2);
-                c3 = _mm_add_pd(p3, c3);
-                c4 = _mm_add_pd(p4, c4);
-
-                _mm_storeu_pd(C+i+jlda, c1);
-                _mm_storeu_pd(C+i+jlda+2, c2);
-                _mm_storeu_pd(C+i+jlda+4, c3);
-                _mm_storeu_pd(C+i+jlda+6, c4);
+    for (int j=0; j<N; j++) {
+        for (int i=0; i<M; i+=I_STRIDE) {
+            i_step = min(I_STRIDE, M-i);
+            if (i_step==1) {            
+                new_A[i+j*M_even] = A[i+j*lda];
+            } else {
+                a = _mm_loadu_pd(A+i+j*lda);
+                _mm_store_pd(new_A+i+j*M_even, a);
             }
+        }
+    }
+    if (N % 2) {
+        for (int i=0; i<M_even; i++) {
+            new_A[i+(N_even-1)*M_even] = 0.0;
+        }
+    } 
+    return new_A;
+}
 
-            for (int i=M_div_8; i<M; ++i) {
-                C[i+j*lda] += A[i+klda] * bkj;
+
+
+
+static void add_block(double* new_A, double*  A, int M, int N, int lda, int M_even) {
+
+    __m128d a; 
+    int i_step;
+    for (int j=0; j<N; j++) {
+        for (int i=0; i<M; i+=I_STRIDE) {
+            i_step = min(I_STRIDE,M-i); 
+            if (i_step == 1) {
+                A[i+j*lda] = new_A[i+j*M_even];
+            } 
+            else {
+                a = _mm_load_pd(new_A + i + j*M_even);
+                _mm_storeu_pd(A+i+j*lda,a);
             }
         }
     }
 }
+
 
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, double* A, double* B, double* restrict C) {
-    /* For each block-row of A */ 
-    for (int j = 0; j < lda; j += BLOCK_SIZE) {
-    /* For each block-column of B */
-        for (int k = 0; k < lda; k += BLOCK_SIZE) {
-        /* Accumulate block dgemms into block of C */
-            for (int i = 0; i < lda; i += BLOCK_SIZE)   {
-	       /* Correct block dimensions if block "goes off edge of" the matrix */
-	           int M = min (BLOCK_SIZE, lda-i);
-	           int N = min (BLOCK_SIZE, lda-j);
-	           int K = min (BLOCK_SIZE, lda-k);
+void square_dgemm(int lda, double* A, double* B, double* C) {
 
-	           /* Perform individual block dgemm */
-	           do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+    int block_size_row = 222; 
+    int block_size_col = 12; 
+    int block_size_inner = 222; 
+    int M_even, K_even, N_even;
+    
+    double new_A[50000];
+    double new_B[200000];
+    double new_C[4000];
+
+    for (int k=0; k<lda; k+=block_size_inner) {
+        int K = min(block_size_inner, lda-k);
+        copy_block(lda, K, lda, B+k, new_B);
+        K_even = turn_even(K);
+
+        for (int i=0; i<lda; i+=block_size_row) {
+            int M = min (block_size_row, lda-i);
+            copy_block(lda, M, K, A+i+k*lda, new_A);
+            M_even = turn_even(M);
+
+            /* For each block-column of B */
+            for (int j=0; j<lda; j+=block_size_col) {
+                int N = min (block_size_col, lda-j);
+                N_even = turn_even(N);               
+                copy_block(lda, M, N, C+i+j*lda, new_C);
+
+                do_block(M_even, K_even, N_even, new_A, new_B+j*K_even, new_C);
+                add_block(new_C, C+i+j*lda, M, N, lda, M_even);
             }
         }
     }
