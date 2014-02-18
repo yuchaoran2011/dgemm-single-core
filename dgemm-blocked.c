@@ -5,6 +5,7 @@ const char* dgemm_desc = "Blocked dgemm with SSE";
 #define RSIZE_K 2
 #define RSIZE_N 2
 #define I_STRIDE 2
+// Further improvement may be achieved by tuning parameters above and unrolling loops
 
 #define turn_even(M) (((M)%2)?((M)+1):(M))
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -116,7 +117,6 @@ void square_dgemm(int lda, double* A, double* B, double* C) {
             copy_block(lda, M, K, A+i+k*lda, new_A);
             M_even = turn_even(M);
 
-            /* For each block-column of B */
             for (int j=0; j<lda; j+=block_size_col) {
                 int N = min (block_size_col, lda-j);
                 N_even = turn_even(N);               
